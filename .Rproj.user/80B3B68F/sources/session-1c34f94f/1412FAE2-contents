@@ -1,9 +1,0 @@
--- Per fer es build 
-
-docker build --build-arg R_VERSION=4.3 --build-arg BIOC_VERSION=3.18  -t  . 
-
--- Per fer es run 
-
-docker run -v /home/ignasi/docker_files_amanda:/home/Docker_amanda/20240601_amanda_bioRNA_biagra/RESULTATS_BIOPSIA_RNA -v 
-/home/ignasi/docker_files_amanda:/home/Docker_amanda/20240601_amanda_bioRNA_biagra/Report_for_notlog  
---memory=800g --cpus=2 app_docker_amanda  

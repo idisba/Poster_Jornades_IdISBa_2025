@@ -1,0 +1,8 @@
+
+# Inici del cronòmetre
+start_time <- Sys.time()
+
+# Escriure la data i hora d'inici al fitxer
+sink("./session_info/session_info.txt", append = TRUE)
+cat("🕒 Inici de l'execució: ", format(start_time, "%Y-%m-%d %H:%M:%S"), "\n\n")
+sink()

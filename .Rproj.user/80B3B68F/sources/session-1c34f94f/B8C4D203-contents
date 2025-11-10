@@ -1,0 +1,311 @@
+---
+title: A.M.A.N.D.A.
+subtitle: "hola"
+format:
+  physmed-portrait-typst: 
+    poster-authors: "Josep Muncunill$^{1}$, Max Gumbert$^{1}$, Ignasi del Salto$^{2}$, Maria Berman$^{1}$"
+    poster-banner: "images/banner-poster-physmed-logos-portrait.png"
+    departments: "$^1$Unitat Bioinformàtica, $^2$PRSIB"
+    footer-text: "Plataforma Genòmica i Bioinformàtica"
+    footer-url: "https://www.idisba.es"
+    footer-emails: "bioinformatica@idisba.es"
+    footer-color: "C0D8D4"
+    space-after-header: -20
+    margin-top: 0
+    keywords: ["Chaos", "Cahotic code", "Cahotic data"]
+editor_options: 
+  chunk_output_type: console
+---
+
+# Introducció
+
+La reproducibilitat és un tret impressindible en les anàlisis de dades. Per assolir aquest objectiu cal controlar diferents punts del procés:
+
+```{r,eval=F,echo=F}
+library(DiagrammeR)
+library(DiagrammeRsvg)
+library(rsvg)
+g<-
+grViz("
+digraph cdoi {
+  graph [rankdir=LR, bgcolor=\"white\", nodesep=0.8, ranksep=1.2]
+
+  node [fontname=\"Helvetica\", fontsize=18, shape=box, style=filled, penwidth=1.5]
+  # Nodes
+  Control  [label=<
+    <b> Control</b><br/><font point-size='14'>Gestió, traçabilitat</font>
+  >,
+  shape=ellipse, fillcolor=\"#E0F2FE\", color=\"#0284C7\", width=1.6]
+
+  DataIN [label=<
+    <b>📂 Data IN</b><br/><font point-size='14'>Dades originals</font>
+  >,
+  fillcolor=\"#DCFCE7\", color=\"#16A34A\"]
+  
+  Codi [label=<
+    <b>💻 Codi</b><br/><font point-size='14'>Scripts, pipelines</font>
+  >,
+  fillcolor=\"#F3E8FF\", color=\"#9333EA\"]
+  
+  Entorn [label=<
+    <b>⚙️ Entorn</b><br/><font point-size='14'>Versió, dependències</font>
+  >,
+  fillcolor=\"#FEF9C3\", color=\"#CA8A04\"]
+  
+  DataOUT [label=<
+    <b>📊 Data OUT</b><br/><font point-size='14'>Resultats, informes</font>
+  >,
+  fillcolor=\"#FFE4E6\", color=\"#BE123C\"]
+  
+  # Connexions
+  edge [color=\"#64748B\", arrowsize=1.1, penwidth=1.5]
+  Control -> DataIN
+  Control -> Codi
+  Control -> Entorn
+  Control -> DataOUT
+}
+")
+
+svg_txt <- export_svg(g)
+cat(svg_txt, file = "cdoi_flowchart.svg")
+rsvg_pdf("cdoi_flowchart.svg", "cdoi_flowchart.pdf")
+rsvg_png("cdoi_flowchart.svg", "./cdoi_flowchart.png", width = 2200, height = 1200)
+```
+
+![](cdoi_flowchart.png){width="84%"}
+
+# Metodologia
+
+Per garantir la reproducibilitat s'ha definit un protocol combinant eines pròpies i de tercers.
+
+## Control Dades de Entrada
+
+```{r,echo=F}
+
+read_controlled <- function(path) {
+  data <- read.csv(path)
+  attr(data, "created_at") <- file.info(path)$ctime
+  attr(data, "modify_at") <- file.info(path)$mtime
+  attr(data, "last_acces_at") <- file.info(path)$atime
+  attr(data, "md5") <- tools::md5sum(path)
+  data
+}
+```
+
+```{r,echo=F}
+path<-"/home/josep/20240601_amanda_bioRNA_biagra_RESCAT2/RESULTATS_BIOPSIA_RNA_nou/TAULES/table_DEG_sig_RNA_score.csv"
+dades <- read_controlled(path)
+
+```
+
+A les dades de partida se'ls afegeix:
+
+-   **Data creació/modificació i ultim accés**
+
+-   **MD5sum:** identificador que permet detectar qualsevol modificació, per petita que sigui, en un fitxer.
+
+::: {.callout-note icon="false"}
+## Exemple de MD5sum
+
+```{r,results='asis',echo=F}
+cat(attributes(dades)$md5[[1]])
+```
+:::
+
+```{r,results='markup',echo=F,include=F}
+info<-attributes(dades)
+
+print(info$created_at)
+
+print(info$last_acces_at)
+
+print(info$modify_at)
+
+```
+
+```{r,echo=F,warning=F,message=F,fig.width=14, fig.height=5, dpi=900}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tibble)
+
+# --- dades (ja les tens) ---
+temps <- tibble(
+  tipus  = c("Creació","Modificació","Últim accés"),
+  moment = as.POSIXct(c(info$created_at, info$modify_at, info$last_acces_at),
+                      origin = "1970-01-01"),
+  icona  = c("📄","✏️","👁️")
+) |>
+  mutate(moment = if_else(tipus == "Creació", moment - days(20), moment)) |>
+  arrange(moment)
+
+# --- paràmetres d'alçada ---
+y_baseline <- 0         # línia i punts
+y_icons    <- 0.15      # icones a dalt
+y_label    <- -0.18     # text "Creació/Modificació/Últim accés"
+y_date     <- -0.33     # data
+
+# --- ploteig amb capes a y diferents i sense clip ---
+p<-
+ggplot() +
+  # línia temporal
+  geom_line(data = temps, aes(x = moment, y = y_baseline),
+            linewidth = 2, color = "grey60") +
+  # punts
+  geom_point(data = temps, aes(x = moment, y = y_baseline),
+             size = 9, shape = 21, fill = "white", color = "black") +
+  # icones
+  geom_text(data = temps, aes(x = moment, y = y_icons, label = icona),
+            size = 25) +
+  # etiquetes
+  geom_text(data = temps, aes(x = moment, y = y_label, label = tipus),
+            size = 7) +
+  # dates (sense hores)
+  geom_text(data = temps, aes(x = moment, y = y_date,
+                              label = format(moment, "%Y-%m-%d")),
+            size = 5, color = "grey30") +
+  scale_x_datetime(date_labels = "%Y-%m-%d",
+                   expand = expansion(mult = c(0.05, 0.05))) +
+  scale_y_continuous(limits = c(-0.6, 0.6)) +
+  coord_cartesian(clip = "off") +  # evita que talli el text/emoji
+  theme_void(base_size = 35) +
+  theme(plot.margin = margin(20, 20, 20, 20) # dona aire a dreta/esq/baix
+  )
+
+p
+```
+
+## Control codi
+
+S’implementa un sistema de control de versions amb *Git*.
+
+```{r,echo=F,warning=F,message=F,fig.width=17, fig.height=8, dpi=900}
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+
+# --- Dades que defineixen el flux ---
+# x = temps, y = "nivell" (0=fitxer principal, 1=usuari1, -1=usuari2)
+versions <- tibble::tribble(
+  ~id, ~x, ~y, ~fase,        ~autor,    ~label,     ~emoji,
+  1,   1,  0,  "Original",   "",   "", "📄",
+  2,   2,  1,  "Còpia",      "",  "", "📄",
+  3,   2, -1,  "Còpia",      "",  "", "📄",
+  4,   3,  1,  "Treball",    " ",  "", "💻 📄",
+  5,   3, -1,  "Treball",    "",  "", "💻 📄",
+  6,   4,  0,  "Fusió",      "",   "", "🔀 📄"
+)
+
+# --- Arestes (connexions entre punts) ---
+connexions <- tibble::tribble(
+  ~x1, ~y1, ~x2, ~y2,
+  1, 0, 2, 1,     # Branch cap a Usuari 1
+  1, 0, 2, -1,    # Branch cap a Usuari 2
+  2, 1, 3, 1,     # Treball Usuari 1
+  2, -1, 3, -1,   # Treball Usuari 2
+  3, 1, 4, 0,     # Merge cap a principal
+  3, -1, 4, 0     # Merge cap a principal
+)
+size_text<-15
+# --- Gràfic ---
+p <- ggplot() +
+  geom_curve(
+    data = connexions,
+    aes(x = x1, y = y1, xend = x2, yend = y2),
+    curvature = 0.05,
+    linewidth = 2.2,
+    color = "grey40",
+    arrow = arrow(length = unit(9, "pt"), type = "closed")
+  ) +
+  geom_point(
+    data = versions,
+    aes(x = x, y = y),
+    size = 14, shape = 21, fill = "white", color = "black", stroke = 1.4
+  ) +
+  geom_text(
+    data = versions,
+    aes(x = x, y = y, label = emoji),
+    size = size_text, vjust = -1.5
+  ) +
+  geom_text(
+    data = versions,
+    aes(x = x, y = y, label = autor),
+    vjust = 1.8, size = size_text, family = "sans"
+  ) +
+
+  scale_y_continuous(
+    limits = c(-2.2, 2.2),
+    breaks = c(-1, 0, 1),
+    labels = c("🧑  User 2", "", "🧑 User 1")
+  ) +
+  scale_x_continuous(
+    breaks = 1:4,
+    labels = c("First version", "Duplication", "Edition", "Last version")
+  ) +
+  theme_minimal(base_size = 22) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_text(color = "grey20", size = 35),
+    plot.title = element_text(size = 35, face = "bold", hjust = 0.5),
+    plot.margin = margin(40, 60, 40, 60)
+  )
+
+p
+
+
+```
+
+## Control de l'entorn
+
+Els canvis de versions en el software d'anàlisi comprometen els resultats, tot i tenir les mateixes dades de partida i el mateix codi.
+
+S'integren tres eines de diferent complexitat per controlar l'entrorn:
+
+-    `sessionInfo()`
+
+-   Package R `renv`
+
+-   Implementació en Docker
+
+```{r,echo=F,warning=F,message=F,fig.width=16, fig.height=8, dpi=900}
+# Escala de control d'entorn: de simple a avançat
+library(ggplot2)
+library(dplyr)
+library(tibble)
+
+nivells <- tribble(
+  ~ordre, ~etiqueta,                                       ~desc,                                                                 ~icona,
+  1,      "Versions de R i llibreries",                    "sessionInfo()",                          "🗒️",
+  2,      "renv",                   "Aïllament de paquets",           "🧰",
+  3,      "Docker",    "Entorn complet i portable",               "📦"
+)
+
+# dibuix tipus 'esglaons': segment 0→ordre i punt final amb icona/etiqueta
+ggplot(nivells, aes(x = ordre, y = reorder(etiqueta, ordre))) +
+  # segments d'esglaó
+  geom_segment(aes(x = 0.7, xend = ordre, yend = reorder(etiqueta, ordre)),
+               linewidth = 6, lineend = "round", color = "grey75") +
+  # punt final de cada nivell
+  geom_point(size = 10, shape = 21, fill = "white", color = "black") +
+  # icona damunt del punt
+  geom_text(aes(label = icona), vjust = -1.6, size = 10) +
+  # descripció sota
+  geom_text(aes(label = desc), vjust = 2.2, size = 8, color = "grey25") +
+  # anotacions d'eix
+  scale_x_continuous(limits = c(0.7, 3.3), breaks = 1:3,
+                     labels = c("Bàsic", "Mitjà", "Avançat")) +
+  labs(
+    title = "",
+    x = "Complexitat / Reproductibilitat", y = NULL
+  ) +
+  
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.margin = margin(20, 40, 20, 20)
+  )+theme_minimal(base_size = 30)
+```

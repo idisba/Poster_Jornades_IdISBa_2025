@@ -1,0 +1,125 @@
+# 4. Expressió diferencial ####
+
+source(file = "./libs.R")
+source(file = "./libs_exprs.R")
+# load("./RESULTATS_BIOPSIA_RNA/OBJECTES_R/data_raw_biopsia")
+load("./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/data_rma_biopsia")
+
+## Expressió diferencial entre els grups de pacients Score_respuesta 1 / Score_respuesta 2 ####
+
+# data_rma_biopsia <- data_rma_biopsia[data_rma_biopsia@featureData@data$category=="main"&!is.na(data_rma_biopsia@featureData@data$gene_entrez),]
+table(data_rma_biopsia@featureData@data$category)
+# Eliminar els pacients amb tractament 1 i 5
+
+# data_rma_biopsia <- data_rma_biopsia[,data_rma_biopsia@phenoData@data$Tto_Biol!=1&data_rma_biopsia@phenoData@data$Tto_Biol!=5]
+# Eliminar els Score respuesta 3 
+
+data_rma_biopsia<-data_rma_biopsia[,data_rma_biopsia@phenoData@data$Score_respuesta!=3] 
+table(data_rma_biopsia@phenoData@data$Score_respuesta)
+
+## Correcció batch effect amb ComBat. Matriu d'expressió corregida
+
+data_rma_biopsia_exprs <- ComBat(data_rma_biopsia,data_rma_biopsia@phenoData@data$Batch)
+
+save(data_rma_biopsia_exprs, file="./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/data_rma_biopsia_exprs")
+save(data_rma_biopsia, file="./RESULTATS_BIOPSIA_RNA_nou//OBJECTES_R/data_rma_biopsia")
+
+## Control vs Cas
+groups = data_rma_biopsia@phenoData@data$Score_respuesta
+groups<-gsub("2","No_response",groups)
+groups<-gsub("1","Response",groups)
+groups<-as.factor(groups)
+
+### Limma
+design = model.matrix(~ 0 + groups)
+colnames(design)<-gsub("groups","",colnames(design))
+# data_rma_biopsia_exprs <- oligo::exprs(data_rma_biopsia)
+
+data.fit = lmFit(data_rma_biopsia_exprs,design)
+
+contrast.matrix = makeContrasts(No_response-Response,levels=design)
+data.fit.con = contrasts.fit(data.fit,contrast.matrix)
+data.fit.eb = eBayes(data.fit.con)
+
+table_DEG_score <- topTable(data.fit.eb, number = Inf,
+                            adjust.method = "fdr",
+                            genelist = data_rma_biopsia@featureData@data)
+
+
+table_DEG_sig_RNA_score <- table_DEG_score %>% 
+                                filter(adj.P.Val <=0.05) %>% 
+                                arrange(desc(logFC), desc(adj.P.Val)) 
+dim(table_DEG_sig_RNA_score)
+# 35 mRNA DE significatius en biòpsia
+
+save(table_DEG_score, table_DEG_sig_RNA_score, file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/taules_SCORE")
+
+
+save(table_DEG_score, file = "./RESULTATS_BIOPSIA_RNA_nou/TAULES/table_DEG_RNA_score")
+
+# Visualització gràfica -----------------------------------------------------
+
+## Volcano plot
+### Volem agrupar-los i agafar el que tingui un P valor ajustat més baix
+
+table_DEG_score_g <- table_DEG_score %>% 
+  group_by(gene_symbol) %>% 
+  filter(adj.P.Val==min(adj.P.Val))
+
+Volcanoplot <- EnhancedVolcano(table_DEG_score_g,
+                               lab = table_DEG_score_g$gene_symbol,
+                               # selectLab = genes_int,
+                               labCol = 'black',
+                               labFace = 'bold',
+                               x = "logFC",
+                               y = "adj.P.Val",
+                               pCutoff = 0.05,
+                               FCcutoff = log2(1.5),
+                               ylim = c(0,2),
+                               xlim = c(-1.5,3),
+                               pointSize = 1,
+                               labSize = 3,
+                               colAlpha = 2,
+                               legendPosition = 'top',
+                               legendLabSize = 8,
+                               legendIconSize = 4.0,
+                               drawConnectors = T,
+                               widthConnectors = 0.3,
+                               boxedLabels = F,                
+                               title = "Biòpsia RNA",
+                               subtitle = "Score Respuesta 1 vs 2 ")
+
+Volcanoplot
+
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/volcanoplot_score.png", height=900, width = 900, res = 100)
+print(Volcanoplot)
+dev.off()
+
+# PCA
+
+PCA_rma_combat <- prcomp(t(data_rma_biopsia_exprs), scale. = FALSE)
+
+percentVar <- round(100*PCA_rma_combat$sdev^2/sum(PCA_rma_combat$sdev^2),1)
+sd_ratio <- sqrt(percentVar[2] / percentVar[1])
+
+dataGG <- data.frame(PC1 = PCA_rma_combat$x[,1], PC2 = PCA_rma_combat$x[,2],
+                     Batch =
+                       data_rma_biopsia@phenoData@data$Batch,
+                     Individual =
+                       data_rma_biopsia@phenoData@data$pacient)
+
+
+PCA_data_rma_combat <- ggplot(dataGG, aes(PC1, PC2)) +
+  geom_point(aes(colour = as.factor(Batch)),size=10) +
+  geom_text(aes(label=Individual),color="gray20")+
+  ggtitle("PCA plot") +
+  xlab(paste0("PC1, VarExp: ", percentVar[1], "%")) +
+  ylab(paste0("PC2, VarExp: ", percentVar[2], "%")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_bw()
+
+PCA_data_rma_combat
+
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/PCA_rma_data_combat_score.png", height=900, width = 900, res = 100)
+PCA_data_rma_combat
+dev.off()

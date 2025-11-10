@@ -1,0 +1,26 @@
+align(center + top,
+  grid(
+    align: center + horizon,
+    rows: (title_row_size),
+    columns: (left_title_column_size, title_column_size, right_title_column_size),
+    column-gutter: 0pt,
+    row-gutter: 50pt,
+    "",
+    // ── Títol, SUBTÍTOL, Autors, Departament ──
+    par(leading: 0.5em, text(title_font_size, black, title, weight: 700))
+    + v(title_font_size/5, weak: true)
+    + text(
+        // mida del subtítol (configurable si es passa; si no, 36pt)
+        if exists(subtitle_font_size) { int(subtitle_font_size) * 1pt } else { 36pt },
+        // color del subtítol (configurable; si no, gris)
+        if exists(subtitle_color) { rgb(subtitle_color) } else { rgb(180,180,180) },
+        subtitle,
+        style: "italic"
+      )
+    + v(title_font_size/3, weak: true)
+    + text(authors_font_size, black, authors + "\n")
+    + v(title_font_size/3, weak: true)
+    + text(department_font_size, black, departments),
+    "",
+  )
+)

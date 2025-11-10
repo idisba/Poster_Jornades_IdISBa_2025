@@ -1,0 +1,381 @@
+# 5. Enriquiment funcional SCORE ####
+library(clusterProfiler)
+source(file = "./libs.R")
+source(file = "./libs_exprs.R")
+load("./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/taules_SCORE")
+
+## Expressió diferencial entre els grups de pacients Score_respuesta 1 / Score_respuesta 2 ####
+print(dim(table_DEG_score))
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+print("#")
+table_DEG_score_g <- table_DEG_score %>% 
+  group_by(gene_symbol) %>% 
+  filter(adj.P.Val==min(adj.P.Val))
+
+dim(table_DEG_score_g)
+dim(table_DEG_sig_RNA_score)
+table_DEG_sig_RNA_score$gene_entrez
+## Enriquiment funcional ####
+
+paraules_clau <- c("interleukin",
+                   "cytokine",
+                    "T cell",
+                   "Th2",
+                   "tslp",
+                   "IgE",
+                   "eosinophil",
+                   "ILC",
+                   "asthma",
+                   "CD4", 
+                   "lymphocyte")
+
+
+paraules_clau <-paste(paraules_clau, collapse = "|")
+
+
+### GO GSEA ####
+
+geneList<-table_DEG_score_g$logFC
+names(geneList) <- table_DEG_score_g$gene_entrez
+geneList <- geneList[order(geneList,decreasing = T)]
+length(geneList)
+# geneList <- geneList[!duplicated(names(geneList))]
+length(geneList)
+
+
+set.seed(123)
+GO_gsea <- gseGO(geneList     = geneList,
+                 # by = "DOSE",
+                 OrgDb        = org.Hs.eg.db,
+                 ont          = "BP",
+                 # minGSSize    = 100,
+                 # maxGSSize    = 500,
+                 pvalueCutoff = 0.05,
+                 verbose      = T)
+
+dim(GO_gsea)
+GO_gsea <- setReadable(GO_gsea, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+
+GO_gsea_df<-GO_gsea@result
+dim(GO_gsea_df)
+GO_gsea_df<-GO_gsea@result %>%
+  filter(p.adjust<=0.05)
+dim(GO_gsea_df)
+as<-get(as)
+# save(GO_gsea_df,file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/GO_gsea_df")
+
+# Filtrar per paraules clau
+datatable_jm(GO_gsea_df)
+dim(GO_gsea_df)
+
+# reducedTerms
+
+simMatrix <- calculateSimMatrix(as$ID,
+                                orgdb="org.Hs.eg.db",
+                                ont="BP",
+                                method="Rel")
+
+
+scores <- setNames(-log10(GO_gsea_df$qvalue), GO_gsea_df$ID)
+
+reducedTerms <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.8,
+                                orgdb="org.Hs.eg.db")
+dim(reducedTerms)
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/treemap_go_gsea_score.png",width = 900,height = 600,res=100)
+treemapPlot(reducedTerms)
+dev.off()
+
+save(reducedTerms,file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/reducedTerms")
+dim(reducedTerms)
+
+
+
+## tremap filtrat per pralules clau. Al final aquesta opcio queda descartada
+
+# reducedTerms
+
+length(paraules_clau)
+GO_gsea_filt <- GO_gsea_df[grepl(paraules_clau,GO_gsea_df$Description,ignore.case = T),]
+datatable_jm(GO_gsea_filt)
+dim(GO_gsea_filt)
+save(GO_gsea_filt, file="./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/go_gsea_filtrat")
+
+simMatrix_filt <- calculateSimMatrix(GO_gsea_filt$ID,
+                                orgdb="org.Hs.eg.db",
+                                ont="BP",
+                                method="Rel")
+
+scores_filt <- setNames(-log10(GO_gsea_filt$qvalue), GO_gsea_filt$ID)
+
+reducedTerms_filt <- reduceSimMatrix(simMatrix_filt,
+                                scores_filt,
+                                threshold=0.8,
+                                orgdb="org.Hs.eg.db")
+
+datatable_jm(reducedTerms_filt)
+taula<-reducedTerms_filt %>% group_by(parentTerm) %>% 
+  distinct(parentTerm,.keep_all = T)
+
+datatable_jm(taula)
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/treemap_go_gsea_score_filtrat.png",width = 900,height = 600,res=100)
+treemapPlot(reducedTerms_filt)
+dev.off()
+
+save(reducedTerms,file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/reducedTerms")
+
+
+GO_gsea_filt$parentTerm<-reducedTerms$parentTerm[match(GO_gsea_filt$ID, reducedTerms$go)]
+dim(GO_gsea_filt)
+GO_gsea_filt
+
+## GO GSEA PLOT ###
+GO_gsea_df$parentTerm<-reducedTerms$parentTerm[match(GO_gsea_df$ID, reducedTerms$go)]
+go_filtrats_amanda<-read_xlsx("./amanda_GO_GSEA_filtrat.xlsx")  
+go_filtrats_amanda<-go_filtrats_amanda %>%
+  filter(is.na(out))
+dim(GO_gsea_df)
+GO_gsea_filt_df<-GO_gsea_df
+
+GO_gsea_filt_df <-
+  GO_gsea_filt_df %>% 
+  filter(ID%in%go_filtrats_amanda$go) %>% 
+  mutate(NES_cat=ifelse(NES<0,"Down","Up"))
+
+GO_gsea_filt_df<-GO_gsea_filt_df %>%
+  arrange(p.adjust) %>% 
+  group_by(NES_cat) 
+  # slice_head(n=20)
+dim(GO_gsea_filt_df)
+library(forcats)
+
+dim(GO_gsea_filt_df)
+datatable_jm(GO_gsea_filt_df)
+GO_gsea_filt_df$parentTerm
+
+
+GO_gsea_filt_graph <- GO_gsea_filt_df %>% group_by(NES_cat) %>%
+  # slice_head(n=10) %>% 
+  ggplot(aes(x = NES, y = fct_reorder2(Description, NES, NES))) + 
+  geom_segment(aes(yend = Description,colour = p.adjust), xend = 0, linewidth=3) +
+  geom_point(aes(color = p.adjust),size = 5) +
+  theme_bw(base_size = 15) +
+  theme(text = element_text(size=12))+
+  # scale_colour_gradient(limits=c(0, pvalue), low="red") +
+  ylab(NULL)+
+  # ggtitle(paste0("First ",num_GO, " up & ", num_GO," down regulated specific GO"))+
+  facet_grid(.~NES_cat,scales = "free")+
+  scale_colour_continuous(low = "#f29191",
+                          high = "#4ca4fc")
+
+
+dim(GO_gsea_filt_df)
+GO_gsea_filt_graph
+
+simMatrix_filt <- calculateSimMatrix(GO_gsea_filt_df$ID,
+                                     orgdb="org.Hs.eg.db",
+                                     ont="BP",
+                                     method="Rel")
+
+scores_filt <- setNames(-log10(GO_gsea_filt_df$qvalue), GO_gsea_filt_df$ID)
+
+reducedTerms_filt <- reduceSimMatrix(simMatrix_filt,
+                                      scores_filt,
+                                     threshold=0.99,
+                                     orgdb="org.Hs.eg.db")
+
+
+png("./tree_map_35.png",width = 1000,height = 1000,res = 150)
+treemapPlot(reducedTerms_filt)
+
+dev.off()
+unique(reducedTerms_filt$parentTerm)
+gos_article<-c("complement activation", 
+"amoeboid-like cell migration", 
+"biological process involved in host interaction", 
+"protein-RNA complex organization", 
+"cell-substance adhesion", 
+"muscle cell differentiation",
+"mitochondrial translation")
+
+gos_article%in%reducedTerms_filt$parentTerm
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/GO_graph_score_filtrat_amanda.png",width = 900,height = 600,res=100)
+GO_gsea_filt_graph
+dev.off()
+
+### KEGG GSEA ####
+geneList<-table_DEG_score_g$logFC
+names(geneList)<-table_DEG_score_g$gene_entrez
+geneList<-geneList[order(geneList,decreasing = T)]
+
+set.seed(123)
+kegg_gsea <- gseKEGG(geneList     = geneList,
+                     organism     = 'hsa',
+                     # minGSSize    = 120,
+                     pvalueCutoff = 0.05,
+                     verbose      = FALSE
+)
+
+
+kegg_gsea <- setReadable(kegg_gsea, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+kegg_gsea_df<-kegg_gsea@result
+kegg_gsea_df<-kegg_gsea@result %>%
+  filter(p.adjust<=0.05) 
+
+
+# filtrar pels ID d'Amanda:
+keggs_gsea_amanda<-c(
+"hsa04540",
+"hsa04210",
+"hsa04066",
+"hsa04015",
+"hsa04640",
+"hsa04657",
+"hsa03013",
+"hsa04310",
+"hsa04140",
+"hsa00190",
+"hsa04530",
+"hsa04510",
+"hsa04068",
+"hsa04810",
+"hsa04520",
+"hsa04350",
+"hsa04612",
+"hsa04670",
+"hsa05100",
+"hsa03018",
+"hsa04014",
+"hsa04060",
+"hsa04514",
+"hsa04150")
+
+
+save(kegg_gsea_df,file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/kegg_gsea_df")
+
+### Representació gràfica KEGG GSEA ####
+
+kegg_gsea_df <-
+  kegg_gsea_df %>% 
+  mutate(NES_cat=ifelse(NES<0,"Down","Up"))
+
+kegg_gsea_df_p<-kegg_gsea_df %>%
+  arrange(NES) %>% 
+  slice_head(n=20)
+
+
+
+kegg_graph <- kegg_gsea_df_p %>% group_by(NES_cat) %>%
+  slice_head(n=10) %>% 
+  ggplot(aes(x = NES, y = fct_reorder2(Description, NES, NES))) + 
+  geom_segment(aes(yend = Description,colour = p.adjust), xend = 0, linewidth=3) +
+  geom_point(aes(color = p.adjust),size = 5) +
+  theme_bw(base_size = 15) +
+  theme(text = element_text(size=12))+
+  # scale_colour_gradient(limits=c(0, pvalue), low="red") +
+  ylab(NULL)+
+  # ggtitle(paste0("First ",num_GO, " up & ", num_GO," down regulated specific GO"))+
+  facet_grid(.~NES_cat,scales = "free")+
+  scale_colour_continuous(low = "#f29191",
+                          high = "#4ca4fc")
+library(forcats)
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/kegg_graph_score.png",width = 900,height = 600,res=100)
+kegg_graph
+dev.off()
+
+
+kegg_gsea_df_p_amanda<-
+  kegg_gsea_df %>%
+  arrange(NES) %>% 
+  filter(ID%in%keggs_gsea_amanda)
+
+kegg_graph_amanda <- kegg_gsea_df_p_amanda %>% group_by(NES_cat) %>%
+  slice_head(n=10) %>% 
+  ggplot(aes(x = NES, y = fct_reorder2(Description, NES, NES))) + 
+  geom_segment(aes(yend = Description,colour = p.adjust), xend = 0, linewidth=3) +
+  geom_point(aes(color = p.adjust),size = 5) +
+  theme_bw(base_size = 15) +
+  theme(text = element_text(size=12))+
+  # scale_colour_gradient(limits=c(0, pvalue), low="red") +
+  ylab(NULL)+
+  # ggtitle(paste0("First ",num_GO, " up & ", num_GO," down regulated specific GO"))+
+  facet_grid(.~NES_cat,scales = "free")+
+  scale_colour_continuous(low = "#f29191",
+                          high = "#4ca4fc")
+
+png("./RESULTATS_BIOPSIA_RNA_nou/PLOTS/kegg_graph_score_filtrat_amanda.png",width = 900,height = 600,res=100)
+kegg_graph_amanda
+dev.off()
+### GO ORA ####
+
+dim(table_DEG_sig_RNA_score)
+genes_sig <- table_DEG_sig_RNA_score$gene_entrez
+
+go_ora <-enrichGO(gene      = genes_sig,
+                  universe      = table_DEG_score_g$gene_entrez,
+                  keyType       = "ENTREZID",
+                  
+                  OrgDb         = "org.Hs.eg.db",
+                  ont           = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff  = 0.05,
+                  qvalueCutoff  = 0.2,
+                  readable      = T )
+
+
+## Taula 
+
+go_ora_result_RNA_score <- data.frame(go_ora@result)
+
+go_ora_result_RNA_score <- go_ora_result_RNA_score %>% 
+                            filter(p.adjust<=0.05)
+
+# Cap GO significatiu
+save(go_ora_result_RNA_score, file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/go_ora_result_RNA_score")
+save(go_ora_result_RNA_score, file = "./RESULTATS_BIOPSIA_RNA_nou/TAULES/go_ora_result_RNA_score.csv")
+
+
+### KEGG ORA ####
+
+genes_sig <- table_DEG_sig_RNA_score$gene_entrez
+
+kegg_ora <- enrichKEGG(gene = genes_sig,
+                       organism     = 'hsa',
+                       # minGSSize    = 120,
+                       pvalueCutoff = 0.05)
+
+kegg_ora <- setReadable(kegg_ora, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+
+kegg_ora_biopsia_score <-kegg_ora@result
+kegg_ora_biopsia_score <-kegg_ora_biopsia_score %>%
+                          filter(p.adjust<=0.05) 
+
+dim(kegg_ora_biopsia_score)
+# 1 terme KEGG significatius
+save(kegg_ora_biopsia_score, file = "./RESULTATS_BIOPSIA_RNA_nou/TAULES/kegg_ora_biopsia_score.csv")
+save(kegg_ora_biopsia_score, file = "./RESULTATS_BIOPSIA_RNA_nou/OBJECTES_R/kegg_ora_biopsia_score")
+
+
+
+

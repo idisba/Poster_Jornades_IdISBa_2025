@@ -1,0 +1,69 @@
+# Argumento para la construcción de la imagen
+ARG R_VERSION=4.3
+
+# Imagen de R que se puede modificar
+FROM rocker/r-ver:${R_VERSION}
+
+# Argumentos para la edición de la version de BioConductor
+ARG BIOC_VERSION=3.18
+ENV BIOC_VERSION=${BIOC_VERSION}
+
+WORKDIR /home/Docker_amanda/20240601_amanda_bioRNA_biagra
+
+RUN apt-get update && apt-get install -y \
+    libxml2-dev \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    libgit2-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    graphviz \
+    git \
+    libgraphviz-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN Rscript -e "install.packages(c('dplyr', 'httr', 'igraph', 'magrittr', 'plyr', 'qvalue', 'rlang', 'tidyr', 'gson'), repos='https://cloud.r-project.org')"
+
+# Llibreries que no se instalen i les instal desde github o Bio
+
+# Instala BiocManager y clusterProfiler 4.14.3(corresponent a se versio 3.18 de BiocManager)
+
+RUN Rscript -e "install.packages('BiocManager', repos='https://cloud.r-project.org'); \
+                BiocManager::install(version = Sys.getenv('BIOC_VERSION'))"
+                
+RUN Rscript -e "BiocManager::install(c('clusterProfiler'), ask=FALSE, update=FALSE)" && \
+    Rscript -e "library(clusterProfiler)"
+
+#RUN Rscript -e "install.packages('BiocManager', repos='https://cloud.r-project.org',dependencies=TRUE)"
+
+RUN Rscript -e "install.packages(c('data.table', 'ggplot2'), repos='https://cloud.r-project.org')"
+RUN Rscript -e "BiocManager::install(c('GOSemSim', 'AnnotationDbi'), dependencies=TRUE)"
+
+# Instalar remotes para instalar desde GitHub
+RUN Rscript -e "install.packages('remotes', repos='https://cloud.r-project.org')" && \
+    Rscript -e "remotes::install_github('ssayols/rrvgo', dependencies=TRUE, upgrade='always')"
+    
+RUN Rscript -e "BiocManager::install('oligo',configure.args = list(oligo = '--disable-threading'), force = TRUE, dependencies=TRUE)"
+# Llibreries instalar bloque 1
+
+RUN Rscript -e "BiocManager::install(c( \
+  'arrayQualityMetrics', 'Biobase', 'org.Hs.eg.db', 'genefilter', \
+  'limma', 'multiMiR', 'EnhancedVolcano', 'sva' \
+),dependencies=TRUE, ask=FALSE, update=FALSE)"
+
+# Llibreries instalar bloque 2
+
+RUN Rscript -e "BiocManager::install(c( \
+  'readxl', 'DT',  \
+  'tidyr', 'skimr', 'compareGroups', 'ggpubr', \
+  'reshape2', 'knitr', 'forcats','rvest' \
+), dependencies=TRUE)"
+
+RUN Rscript -e "BiocManager::install('preprocessCore', configure.args='--disable-threading', force = TRUE, ask=FALSE, update=FALSE)"
+
+COPY 20240601_amanda_bioRNA_biagra /home/Docker_amanda/20240601_amanda_bioRNA_biagra
+
+CMD ["Rscript", "/home/Docker_amanda/20240601_amanda_bioRNA_biagra/Main.R"]
